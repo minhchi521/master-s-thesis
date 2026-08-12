@@ -198,7 +198,7 @@ def run():
         print("[LỖI] Chưa có dac_trung.csv. Chạy features.run() trước.")
         return
 
-    df_feat = pd.read_csv(feat_path)
+    df_feat = pd.read_csv(feat_path, dtype={"tinh_ma": str})
     meta_cols = ["tinh_ma", "tinh_ten", "mon", "nam", "dot", "n_thi", "la_mo_neo_2018"]
     feat_cols = [c for c in df_feat.columns if c not in meta_cols]
     X = df_feat[feat_cols].fillna(0).values
