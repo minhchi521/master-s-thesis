@@ -113,9 +113,19 @@ def compute_shap_values(
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         explainer = shap.TreeExplainer(clf)
-        # Lấy SHAP cho lớp dương (index 1)
-        sv = explainer.shap_values(X)
-        shap_pos = sv[1] if isinstance(sv, list) else sv
+        # Lấy SHAP cho lớp dương (index 1).
+        # LƯU Ý: shap API cũ (<0.44) trả list [shap_class0, shap_class1], mỗi phần tử
+        # shape (n_samples, n_features). Từ shap 0.44+, TreeExplainer trên classifier
+        # trả một mảng DUY NHẤT shape (n_samples, n_features, n_classes) — nếu không
+        # xử lý riêng, mảng 3 chiều này bị lẫn xuống các bước sau, làm np.argsort/index
+        # ở make_health_card nhận mảng thay vì số nguyên (lỗi
+        # "only integer scalar arrays can be converted to a scalar index").
+        if isinstance(sv := explainer.shap_values(X), list):
+            shap_pos = sv[1]                    # API cũ
+        elif isinstance(sv, np.ndarray) and sv.ndim == 3:
+            shap_pos = sv[:, :, 1]               # API mới (0.44+)
+        else:
+            shap_pos = sv                        # đã ở dạng (n_samples, n_features)
 
     # Vẽ summary plot
     if save_path is not None:
@@ -155,6 +165,17 @@ def make_health_card(
       - Điểm bất thường + xếp hạng
       - 3–5 đặc trưng đóng góp nhiều nhất kèm diễn giải tiếng Việt
     """
+    # Bảo vệ: nếu shap_vals không phải mảng 1 chiều (ví dụ thư viện shap đổi định
+    # dạng trả về ở một bản cập nhật sau này), báo lỗi rõ ràng ngay tại đây thay vì
+    # để lỗi khó hiểu ("only integer scalar arrays...") ở bước argsort/indexing bên dưới.
+    shap_vals = np.asarray(shap_vals)
+    if shap_vals.ndim != 1:
+        raise ValueError(
+            f"shap_vals phải là mảng 1 chiều (n_features,), nhưng nhận được shape "
+            f"{shap_vals.shape}. Có thể thư viện shap đã đổi định dạng trả về — "
+            f"kiểm tra lại compute_shap_values()."
+        )
+
     # Sắp xếp đặc trưng theo SHAP trị tuyệt đối
     top_idx = np.argsort(np.abs(shap_vals))[::-1][:n_top_features]
 
