@@ -139,7 +139,7 @@ def export_watchlist(
         print(f"[WARN] Không tìm thấy file điểm: {score_file}")
         return
 
-    df = pd.read_csv(score_file)
+    df = pd.read_csv(score_file, dtype={"tinh_ma": str})
 
     # Lọc năm
     if years:

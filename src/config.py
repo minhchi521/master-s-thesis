@@ -6,14 +6,27 @@ Mọi tham số "ma thuật" (seed, đường dẫn, danh sách năm/môn/tỉnh
 """
 
 import pathlib
+import os
 
 # ──────────────────────────────────────────────
 # Đường dẫn gốc
 # ──────────────────────────────────────────────
 ROOT = pathlib.Path(__file__).resolve().parents[1]   # thư mục exam-anomaly/
 DATA_RAW       = ROOT / "data" / "raw"
-DATA_PROCESSED = ROOT / "data" / "processed"
-OUTPUTS        = ROOT / "outputs"
+
+# DATA_PROCESSED và OUTPUTS có thể trỏ ra ngoài ROOT (ví dụ một thư mục trên
+# Google Drive) bằng biến môi trường EXAM_DATA_PROCESSED / EXAM_OUTPUTS.
+# Lý do: trên Google Colab, ổ đĩa cục bộ (/content/...) bị xóa sạch mỗi khi
+# phiên làm việc kết thúc. Nếu để mặc định (trong ROOT), mọi phiên Colab mới
+# đều phải xử lý lại từ đầu file dữ liệu thô (hàng trăm MB). Trỏ hai biến này
+# ra một thư mục trên Drive (persist qua các phiên) giúp pipeline.py tự nhận
+# ra các bước đã chạy xong ở phiên trước và bỏ qua — xem notebook Colab.
+DATA_PROCESSED = pathlib.Path(os.environ.get(
+    "EXAM_DATA_PROCESSED", str(ROOT / "data" / "processed")
+))
+OUTPUTS = pathlib.Path(os.environ.get(
+    "EXAM_OUTPUTS", str(ROOT / "outputs")
+))
 
 # ──────────────────────────────────────────────
 # Seed cố định — dùng ở MỌI nơi cần random

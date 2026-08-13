@@ -220,7 +220,7 @@ def run(score_col: str = "score_ensemble", top_k: int = TOPK_ALERT):
         print("[LỖI] Chưa có dac_trung.csv.")
         return
 
-    df_feat = pd.read_csv(feat_path)
+    df_feat = pd.read_csv(feat_path, dtype={"tinh_ma": str})
     meta_cols = ["tinh_ma", "tinh_ten", "mon", "nam", "dot", "n_thi", "la_mo_neo_2018"]
     feat_cols = [c for c in df_feat.columns if c not in meta_cols]
     X = df_feat[feat_cols].fillna(0).values
@@ -235,7 +235,7 @@ def run(score_col: str = "score_ensemble", top_k: int = TOPK_ALERT):
         print("[LỖI] Chưa có file điểm. Chạy detectors.run() trước.")
         return
 
-    df_scores = pd.read_csv(score_file)
+    df_scores = pd.read_csv(score_file, dtype={"tinh_ma": str})
     scores = df_scores[score_col].values
 
     # Huấn luyện mô hình proxy để tính SHAP

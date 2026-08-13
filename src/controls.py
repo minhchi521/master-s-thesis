@@ -162,11 +162,11 @@ def run():
     pu_path   = OUTPUTS / "scores_pu.csv"
 
     if base_path.exists():
-        df_base = pd.read_csv(base_path)
+        df_base = pd.read_csv(base_path, dtype={"tinh_ma": str})
         models_to_check.append(("Baseline Ensemble", df_base, "score_ensemble"))
 
     if pu_path.exists():
-        df_pu = pd.read_csv(pu_path)
+        df_pu = pd.read_csv(pu_path, dtype={"tinh_ma": str})
         models_to_check.append(("PU Ensemble", df_pu, "score_pu_ensemble"))
 
     if not models_to_check:
