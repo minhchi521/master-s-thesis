@@ -193,23 +193,43 @@ def plot_sensitivity_curve(df_syn: pd.DataFrame, save_path):
 
     X_syn = df_syn[bin_cols].fillna(0).values
     y_syn = df_syn["label"].values
+    intensity_syn = df_syn["intensity"].values
 
-    # Huấn luyện trên toàn bộ (đường cong định tính, không kiểm định thống kê)
+    # QUAN TRỌNG: phải tách train/test — nếu huấn luyện và đánh giá trên CÙNG
+    # dữ liệu, recall sẽ luôn ~100% (mô hình học thuộc lòng), không phản ánh
+    # khả năng phát hiện thật. Đây là lỗi từng có ở bản trước (đối chứng dương
+    # báo 100% recall ở mọi cường độ, kể cả 0.2 — dấu hiệu điển hình của học
+    # thuộc lòng), nay tách 70/30 có phân tầng theo nhãn.
+    from sklearn.model_selection import train_test_split
+    idx_all = np.arange(len(X_syn))
+    idx_train, idx_test = train_test_split(
+        idx_all, test_size=0.3, stratify=y_syn, random_state=RANDOM_SEED
+    )
+
     clf = RandomForestClassifier(n_estimators=100, random_state=RANDOM_SEED, n_jobs=-1)
-    clf.fit(X_syn, y_syn)
-    y_score = clf.predict_proba(X_syn)[:, 1]
+    clf.fit(X_syn[idx_train], y_syn[idx_train])
+    y_score_test = clf.predict_proba(X_syn[idx_test])[:, 1]
+    y_true_test = y_syn[idx_test]
+    intensity_test = intensity_syn[idx_test]
 
     intensities = sorted(df_syn["intensity"].unique())
     recalls = []
+    n_test_pos = []
 
     for intens in intensities:
-        mask = (df_syn["intensity"] == intens) & (y_syn == 1)
+        mask = (intensity_test == intens) & (y_true_test == 1)
+        n_test_pos.append(int(mask.sum()))
         if mask.sum() == 0:
             recalls.append(np.nan)
             continue
-        # Recall ở ngưỡng 0.5
-        y_pred = (y_score[mask] >= 0.5).astype(int)
+        # Recall ở ngưỡng 0.5, CHỈ trên tập test chưa từng thấy lúc huấn luyện
+        y_pred = (y_score_test[mask] >= 0.5).astype(int)
         recalls.append(y_pred.mean())
+
+    if any(n < 10 for n in n_test_pos if n > 0):
+        print("  [CẢNH BÁO] Một vài mức cường độ có rất ít mẫu dương trong tập "
+              "test (n<10) sau khi tách 70/30 — recall ở mức đó có thể không ổn định, "
+              "nên báo cáo kèm cỡ mẫu trong luận văn.")
 
     plt.figure(figsize=(8, 5))
     plt.plot(intensities, recalls, marker="o", linewidth=2, color="steelblue")
@@ -224,7 +244,7 @@ def plot_sensitivity_curve(df_syn: pd.DataFrame, save_path):
     plt.close()
     print(f"  Đã lưu đường cong độ nhạy: {save_path}")
 
-    return pd.DataFrame({"intensity": intensities, "recall": recalls})
+    return pd.DataFrame({"intensity": intensities, "recall": recalls, "n_test_pos": n_test_pos})
 
 
 # ──────────────────────────────────────────────────────────────
