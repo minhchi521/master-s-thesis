@@ -1,0 +1,11 @@
+BÁO CÁO ĐỐI CHỨNG ÂM (NGOÀI-MẪU, mô hình ensemble_classic, cờ = top-k mỗi lượt)
+
+  Hà Nội    :   1/ 45 gắn cờ (FPR = 2.2%)
+  TP HCM    :   0/ 72 gắn cờ (FPR = 0.0%)
+  Hải Phòng :   0/ 81 gắn cờ (FPR = 0.0%)
+  Đà Nẵng   :   7/ 90 gắn cờ (FPR = 7.8%)
+  Nghệ An   :   0/ 45 gắn cờ (FPR = 0.0%)
+
+  FPR trên toàn bộ đơn vị âm kiểm tra : 1.9%
+  FPR nhóm đối chứng (5 tỉnh)          : 2.4%
+  Null hoán vị tỉnh: TB 1.9%, p95 5.9%; tỷ lệ trung bình theo tỉnh của nhóm đối chứng 2.0%; p = 0.406

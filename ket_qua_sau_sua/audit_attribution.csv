@@ -1,0 +1,9 @@
+model,legacy_legacy_roc,legacy_legacy_pr,fixed_legacy_roc,fixed_legacy_pr,legacy_strict_roc,legacy_strict_pr,fixed_strict_roc,fixed_strict_pr
+elkan_noto,0.962,0.774,0.97,0.746,0.966,0.763,0.972,0.744
+pu_bagging,0.931,0.681,0.974,0.703,0.93,0.666,0.974,0.705
+two_step,0.914,0.788,0.831,0.586,0.905,0.674,0.87,0.583
+scale_pu,0.944,0.6,0.975,0.768,0.941,0.592,0.975,0.766
+puicl_style,0.923,0.553,0.826,0.491,0.933,0.589,0.832,0.541
+ensemble_classic,0.952,0.817,0.975,0.752,0.95,0.782,0.975,0.744
+ensemble_modern,0.941,0.651,0.91,0.586,0.946,0.678,0.911,0.611
+ensemble,0.954,0.8,0.963,0.683,0.953,0.792,0.964,0.688

@@ -1,0 +1,26 @@
+KẾT QUẢ ĐỊNH LƯỢNG (LOPO nghiêm ngặt, trung bình 24 lượt = 3 fold × 8 lần chia)
+
+  elkan_noto         ROC-AUC 0.972  PR-AUC 0.744  Recall@k 0.657
+  pu_bagging         ROC-AUC 0.974  PR-AUC 0.705  Recall@k 0.630
+  two_step           ROC-AUC 0.870  PR-AUC 0.583  Recall@k 0.588
+  scale_pu           ROC-AUC 0.975  PR-AUC 0.766  Recall@k 0.644
+  puicl_style        ROC-AUC 0.832  PR-AUC 0.541  Recall@k 0.500
+  ensemble_classic   ROC-AUC 0.975  PR-AUC 0.744  Recall@k 0.671
+  ensemble_modern    ROC-AUC 0.911  PR-AUC 0.611  Recall@k 0.546
+  ensemble           ROC-AUC 0.964  PR-AUC 0.688  Recall@k 0.602
+  [baseline] divergence       ROC-AUC 0.916  PR-AUC 0.588  Recall@k 0.532
+  [baseline] isolation_forest ROC-AUC 0.833  PR-AUC 0.248  Recall@k 0.241
+  [baseline] lof              ROC-AUC 0.650  PR-AUC 0.170  Recall@k 0.185
+  [baseline] dbscan           ROC-AUC 0.711  PR-AUC 0.098  Recall@k 0.120
+
+CH4/GT4 (mới − cổ điển, ensemble):
+  roc_auc: -0.063; mô hình mới hơn ở 0/24 lượt; theo fold {'05': -0.077, '14': -0.059, '23': -0.054}
+  pr_auc: -0.132; mô hình mới hơn ở 3/24 lượt; theo fold {'05': -0.057, '14': -0.211, '23': -0.128}
+  recall_at_k: -0.125; mô hình mới hơn ở 3/24 lượt; theo fold {'05': 0.0, '14': -0.236, '23': -0.139}
+
+GT2 (độ nhạy tại FPR 5%, hiệu số so với baseline divergence):
+  elkan_noto         +0.153  CI95 [+0.106, +0.199]
+  pu_bagging         +0.153  CI95 [+0.083, +0.227]
+  ensemble_classic   +0.139  CI95 [+0.079, +0.194]
+  ensemble_modern    -0.023  CI95 [-0.069, +0.023]
+  ensemble           +0.046  CI95 [-0.009, +0.102]

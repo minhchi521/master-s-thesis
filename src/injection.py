@@ -15,6 +15,12 @@ Output:
   - outputs/injection_report.txt            — báo cáo kiểm chứng GT3
 
 Ứng với Mục 7.3 trong đề cương.
+
+CẢNH BÁO (xem AUDIT_ROI_RI.md): tập synthetic_labeled.csv KHÔNG được chia train/test ngẫu nhiên rồi
+huấn luyện một bộ phân loại trên đó — cùng một đơn vị sạch xuất hiện lặp lại ở nhiều cường độ và nhiều chữ ký
+nên cách chia đó rò rỉ gần-trùng-lặp, và còn là "tự ra đề tự chấm" (mô hình học đúng vector chữ ký).
+Đường cong độ nhạy chính thức nay được tính trong lopo.py: chữ ký lấy từ tỉnh bị giấu, ca giả được chấm bằng
+đúng các mô hình PU đã huấn luyện KHÔNG thấy ca giả nào, ở mức báo nhầm cố định 5%.
 """
 
 import numpy as np

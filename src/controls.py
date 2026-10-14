@@ -1,204 +1,70 @@
 """
-controls.py — Phần 6: Đối chứng âm + mô hình null
-====================================================
-Mục tiêu: đảm bảo mô hình KHÔNG báo nhầm tỉnh giỏi hợp pháp;
-          đo tỷ lệ báo nhầm nền (false positive rate).
-
-Hai loại kiểm tra:
-  A. Đối chứng âm thật  — tỉnh giỏi ổn định nhiều năm → mô hình KHÔNG được gắn cờ.
-  B. Mô hình null/hoán vị — trộn ngẫu nhiên nhãn nhiều lần → FPR nền.
-
-Input:  outputs/scores_baseline.csv + outputs/scores_pu.csv
-Output: outputs/control_report.txt + outputs/fpr_null.csv
-
-Ứng với Mục 7.4 trong đề cương.
+controls.py — Phần 6: Đối chứng âm + Mô hình null (BẢN ĐÃ SỬA)
+================================================================
+Hai lỗi của bản đầu:
+  1. Danh sách tỉnh "giỏi hợp pháp" dùng MÃ HÀNH CHÍNH (01/31/79/40/48) trong khi dữ liệu thi dùng
+     MÃ THI (01–64). Hệ quả: "Hải Phòng"→thực ra là Quảng Bình, "Nghệ An"→Đắk Lắk, "Đà Nẵng"→Đồng Nai,
+     "TP.HCM" (79) không có trong dữ liệu. Bản này dùng đúng mã và KIỂM TRA tên khớp dữ liệu.
+  2. "Mô hình null" hoán vị điểm rồi đếm tỷ lệ vượt ngưỡng cố định: tỷ lệ này BẤT BIẾN dưới hoán vị
+     (độ lệch chuẩn luôn 0), nên không mang thông tin. Bản này dùng hai null có nghĩa:
+       (a) hoán vị NHÃN trong từng lượt LOPO → phân phối null của ROC-AUC (lopo.permutation_test);
+       (b) hoán vị TỈNH: tỷ lệ gắn cờ của nhóm đối chứng so với 5 tỉnh bất kỳ cùng cỡ.
+Cờ gắn theo luật "top-k" (k = số ca dương) thay vì ngưỡng 0.7 trên điểm min-max (phụ thuộc cực trị).
 """
-
 import numpy as np
 import pandas as pd
-from sklearn.preprocessing import MinMaxScaler
 
-from config import DATA_PROCESSED, OUTPUTS, RANDOM_SEED, ANCHOR_PROVINCES_2018, TOPK_ALERT
-
-
-# ──────────────────────────────────────────────────────────────
-# Danh sách "giỏi hợp pháp" (đối chứng âm)
-# Chọn tỉnh có nhiều trường chuyên, kết quả ổn định nhiều năm liên tiếp.
-# Danh sách này nên được cập nhật theo dữ liệu thực tế.
-# ──────────────────────────────────────────────────────────────
-LEGITIMATE_STRONG_PROVINCES = {
-    "01": "Hà Nội",          # trường chuyên hàng đầu, luôn top
-    "31": "Hải Phòng",       # nhiều trường chuyên chất lượng
-    "79": "TP. Hồ Chí Minh", # cạnh tranh cao, ổn định
-    "40": "Nghệ An",         # chuyên Phan Bội Châu, luôn top tự nhiên
-    "48": "Đà Nẵng",         # kết quả ổn định nhiều năm
-}
-
-# Ngưỡng: coi là "báo nhầm" khi điểm bất thường vượt ngưỡng này
-ALERT_THRESHOLD = 0.7   # 70/100 điểm bất thường
+from config import OUTPUTS, DATA_PROCESSED, RANDOM_SEED
+from lopo import CONTROL_PROVINCES
 
 
-# ──────────────────────────────────────────────────────────────
-# A. Đối chứng âm: kiểm tra tỉnh giỏi hợp pháp
-# ──────────────────────────────────────────────────────────────
-def check_false_positive_on_legitimate(
-    df_scores: pd.DataFrame,
-    score_col: str = "score_ensemble",
-    threshold: float = ALERT_THRESHOLD,
-) -> pd.DataFrame:
-    """
-    Lọc các dòng thuộc tỉnh 'giỏi hợp pháp', kiểm tra tỷ lệ bị gắn cờ bất thường.
-
-    Kết quả lý tưởng: 0% bị gắn cờ.
-    Kết quả chấp nhận được: < 10%.
-    Kết quả cần xem lại: > 20% (mô hình bị nhầm giỏi với gian lận).
-    """
-    df_legit = df_scores[
-        df_scores["tinh_ma"].isin(LEGITIMATE_STRONG_PROVINCES.keys())
-    ].copy()
-
-    if df_legit.empty:
-        print("  [WARN] Không tìm thấy tỉnh đối chứng âm trong dữ liệu.")
-        return pd.DataFrame()
-
-    # Gắn cờ khi vượt ngưỡng
-    df_legit["flagged"] = df_legit[score_col] >= threshold
-    df_legit["tinh_ten_check"] = df_legit["tinh_ma"].map(LEGITIMATE_STRONG_PROVINCES)
-
-    summary = df_legit.groupby(["tinh_ma", "tinh_ten_check"])["flagged"].agg(
-        n_total="count",
-        n_flagged="sum"
-    )
-    summary["fpr"] = summary["n_flagged"] / summary["n_total"]
-
-    return summary.reset_index()
+def _names_from_data(df):
+    return df.drop_duplicates("tinh_ma").set_index("tinh_ma")["tinh_ten"].to_dict()
 
 
-# ──────────────────────────────────────────────────────────────
-# B. Mô hình null — hoán vị nhãn ngẫu nhiên
-# ──────────────────────────────────────────────────────────────
-def run_null_model(
-    df_scores: pd.DataFrame,
-    score_col: str = "score_ensemble",
-    n_permutations: int = 200,
-    threshold: float = ALERT_THRESHOLD,
-) -> dict:
-    """
-    Hoán vị ngẫu nhiên điểm bất thường nhiều lần.
-    Đếm tỷ lệ mẫu ngẫu nhiên vượt ngưỡng → FPR nền.
+def verify_control_codes(df_any):
+    """Cảnh báo nếu mã tỉnh đối chứng không trỏ đúng tên tỉnh trong dữ liệu."""
+    real = _names_from_data(df_any)
+    norm = lambda s: s.lower().replace(".", "").replace(" ", "")
+    bad = [(c, n, real.get(c)) for c, n in CONTROL_PROVINCES.items() if norm(real.get(c, "")) != norm(n)]
+    for c, n, r in bad:
+        print(f"  [CẢNH BÁO] mã {c}: đối chứng ghi '{n}' nhưng dữ liệu là '{r}'")
+    return not bad
 
-    Nếu FPR thật ≈ FPR nền: mô hình không phân biệt được.
-    Nếu FPR thật >> FPR nền: mô hình đang nhạy hơn ngẫu nhiên.
-    """
+
+def control_from_flags(units, model="ensemble_classic", n_null=5000):
+    """units: bảng lopo_unit_flags (mỗi dòng là một đơn vị âm trong một lượt, có cột flagged)."""
+    u = units[units.model == model].copy()
+    ctrl = u[u.tinh_ma.isin(CONTROL_PROVINCES)]
+    per = ctrl.groupby("tinh_ma").flagged.agg(n_flag="sum", n="count").assign(fpr=lambda t: t.n_flag / t.n)
+    per.index = [CONTROL_PROVINCES[c] for c in per.index]
+    fpr_all = u.flagged.mean(); fpr_ctrl = ctrl.flagged.mean()
     rng = np.random.default_rng(RANDOM_SEED)
-    scores = df_scores[score_col].values
-    fpr_list = []
-
-    for _ in range(n_permutations):
-        shuffled = rng.permutation(scores)
-        fpr = (shuffled >= threshold).mean()
-        fpr_list.append(fpr)
-
-    return {
-        "null_fpr_mean": float(np.mean(fpr_list)),
-        "null_fpr_std":  float(np.std(fpr_list)),
-        "null_fpr_p95":  float(np.percentile(fpr_list, 95)),
-        "real_fpr":      float((scores >= threshold).mean()),
-    }
+    prov_rate = u.groupby("tinh_ma").flagged.mean()
+    others = prov_rate.drop(index=[c for c in CONTROL_PROVINCES if c in prov_rate.index]).values
+    null = np.array([rng.choice(others, len(CONTROL_PROVINCES), replace=False).mean() for _ in range(n_null)])
+    obs = prov_rate.reindex(list(CONTROL_PROVINCES)).dropna().mean()
+    return per, dict(fpr_all=float(fpr_all), fpr_ctrl=float(fpr_ctrl), prov_mean_ctrl=float(obs),
+                     null_mean=float(null.mean()), null_p95=float(np.quantile(null, .95)),
+                     p_value=float((np.sum(null >= obs) + 1) / (n_null + 1)))
 
 
-# ──────────────────────────────────────────────────────────────
-# Tổng hợp và viết báo cáo
-# ──────────────────────────────────────────────────────────────
-def write_control_report(
-    fp_legit: pd.DataFrame,
-    null_stats: dict,
-    model_name: str,
-    report_path,
-):
-    """Viết báo cáo dạng text cho một mô hình."""
-    lines = [f"\n{'='*60}", f"  Báo cáo đối chứng — mô hình: {model_name}", f"{'='*60}"]
-
-    lines.append("\n[A] Đối chứng âm (tỉnh giỏi hợp pháp):")
-    if fp_legit.empty:
-        lines.append("  Không có dữ liệu.")
-    else:
-        for _, r in fp_legit.iterrows():
-            flag = "✓ OK" if r["fpr"] < 0.1 else ("⚠ CẦN XEM" if r["fpr"] < 0.25 else "✗ SAI NGHIÊM TRỌNG")
-            lines.append(
-                f"  {r['tinh_ten_check']:20s}: {r['n_flagged']:3.0f}/{r['n_total']:3.0f} gắn cờ "
-                f"(FPR={r['fpr']:.1%})  [{flag}]"
-            )
-
-    lines.append("\n[B] Mô hình null (hoán vị ngẫu nhiên):")
-    lines.append(f"  FPR thật      : {null_stats['real_fpr']:.1%}")
-    lines.append(f"  FPR null trung bình: {null_stats['null_fpr_mean']:.1%} ± {null_stats['null_fpr_std']:.1%}")
-    lines.append(f"  FPR null p95  : {null_stats['null_fpr_p95']:.1%}")
-
-    if null_stats["real_fpr"] > null_stats["null_fpr_p95"]:
-        lines.append("  → FPR thật vượt ngưỡng ngẫu nhiên — mô hình đang ĐÁNH DẤU NHIỀU hơn cơ hội.")
-    else:
-        lines.append("  → FPR thật trong phạm vi ngẫu nhiên — không có tín hiệu rõ.")
-
-    report_text = "\n".join(lines)
-    print(report_text)
-    with open(report_path, "a", encoding="utf-8") as f:
-        f.write(report_text + "\n")
-
-
-# ──────────────────────────────────────────────────────────────
-# Hàm chính
-# ──────────────────────────────────────────────────────────────
 def run():
-    print("=== Phần 6: Đối chứng âm + Mô hình null ===")
-    OUTPUTS.mkdir(parents=True, exist_ok=True)
-
-    report_path = OUTPUTS / "control_report.txt"
-    report_path.write_text("BÁO CÁO ĐỐI CHỨNG ÂM VÀ MÔ HÌNH NULL\n", encoding="utf-8")
-
-    # Đọc điểm từ Phần 3 và Phần 5
-    models_to_check = []
-    base_path = OUTPUTS / "scores_baseline.csv"
-    pu_path   = OUTPUTS / "scores_pu.csv"
-
-    if base_path.exists():
-        df_base = pd.read_csv(base_path, dtype={"tinh_ma": str})
-        models_to_check.append(("Baseline Ensemble", df_base, "score_ensemble"))
-
-    if pu_path.exists():
-        df_pu = pd.read_csv(pu_path, dtype={"tinh_ma": str})
-        models_to_check.append(("PU Ensemble", df_pu, "score_pu_ensemble"))
-
-    if not models_to_check:
-        print("[LỖI] Chưa có file điểm bất thường. Chạy detectors.run() và pu_models.run() trước.")
-        return
-
-    null_records = []
-
-    for model_name, df_scores, score_col in models_to_check:
-        if score_col not in df_scores.columns:
-            print(f"  [SKIP] Cột {score_col} không có trong {model_name}.")
-            continue
-
-        # Kiểm tra đối chứng âm
-        fp_legit = check_false_positive_on_legitimate(df_scores, score_col)
-
-        # Mô hình null
-        null_stats = run_null_model(df_scores, score_col)
-
-        # Ghi báo cáo
-        write_control_report(fp_legit, null_stats, model_name, report_path)
-
-        null_records.append({"model": model_name, **null_stats})
-
-    # Lưu thống kê null dạng CSV để dùng trong evaluate.py
-    if null_records:
-        pd.DataFrame(null_records).to_csv(
-            OUTPUTS / "fpr_null.csv", index=False, encoding="utf-8-sig"
-        )
-
-    print(f"\nBáo cáo đã lưu: {report_path}")
-    print("Phần 6 hoàn thành.")
+    """Kiểm tra TRONG-MẪU trên điểm triển khai (chỉ để rà nhanh): tỷ lệ đơn vị của các tỉnh đối chứng nằm
+    trong top 5% điểm bất thường. Số liệu chính thức (ngoài-mẫu) do evaluate.py ghi vào control_report.txt."""
+    print("=== Phần 6: Đối chứng âm (kiểm tra nhanh, trong-mẫu) ===")
+    p = OUTPUTS / "scores_pu.csv"
+    if not p.exists():
+        print("  [SKIP] chưa có scores_pu.csv"); return
+    df = pd.read_csv(p, dtype={"tinh_ma": str}); verify_control_codes(df)
+    lines = ["KIỂM TRA NHANH ĐỐI CHỨNG ÂM (trong-mẫu, top 5% mỗi năm)"]
+    for col in ["score_pu_ensemble_classic", "score_pu_ensemble"]:
+        thr = df.groupby("nam")[col].transform(lambda s: s.quantile(0.95))
+        df["_f"] = df[col] >= thr
+        for code, name in CONTROL_PROVINCES.items():
+            s = df[df.tinh_ma == code]
+            lines.append(f"  {col:28s} {name:10s} {int(s._f.sum()):3d}/{len(s):3d} gắn cờ ({s._f.mean():.1%})")
+    (OUTPUTS / "control_quick.txt").write_text("\n".join(lines), encoding="utf-8"); print("\n".join(lines))
 
 
 if __name__ == "__main__":

@@ -200,7 +200,9 @@ def run():
 
     df_feat = pd.read_csv(feat_path, dtype={"tinh_ma": str})
     meta_cols = ["tinh_ma", "tinh_ten", "mon", "nam", "dot", "n_thi", "la_mo_neo_2018"]
-    feat_cols = [c for c in df_feat.columns if c not in meta_cols]
+    # Dùng cùng bộ đặc trưng với PU (bỏ nhóm temporal: không xác định cho 2018) để so sánh công bằng
+    from features import PU_FEATURE_COLS
+    feat_cols = [c for c in PU_FEATURE_COLS if c in df_feat.columns]
     X = df_feat[feat_cols].fillna(0).values
 
     print(f"Ma trận đặc trưng: {X.shape}")
